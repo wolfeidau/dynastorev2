@@ -2,6 +2,10 @@
 
 This package provides a CRUD (create, read, update and delete) store for [AWS DynamoDB](https://aws.amazon.com/dynamodb/) using the [AWS Go SDK v2](https://github.com/aws/aws-sdk-go-v2/).
 
+[![GitHub Actions status](https://github.com/wolfeidau/dynastorev2/workflows/Go/badge.svg?branch=master)](https://github.com/wolfeidau/dynastorev2/actions?query=workflow%3AGo)
+[![Go Report Card](https://goreportcard.com/badge/github.com/wolfeidau/dynastorev2)](https://goreportcard.com/report/github.com/wolfeidau/dynastorev2)
+[![Documentation](https://godoc.org/github.com/wolfeidau/dynastorev2?status.svg)](https://godoc.org/github.com/wolfeidau/dynastorev2)
+
 # Overview
 
 This is a rewrite of the original [dynastore](https://github.com/wolfeidau/dynastore) with the main differences being:
