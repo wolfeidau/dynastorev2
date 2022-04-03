@@ -1,6 +1,6 @@
 # dynastorev2
 
-This package provides a CRUD (create, read, update and delete) store for AWS DynamoDB](https://aws.amazon.com/dynamodb/) using the [AWS Go SDK v2](https://github.com/aws/aws-sdk-go-v2/).
+This package provides a CRUD (create, read, update and delete) store for [AWS DynamoDB](https://aws.amazon.com/dynamodb/) using the [AWS Go SDK v2](https://github.com/aws/aws-sdk-go-v2/).
 
 # Overview
 
