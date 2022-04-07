@@ -27,17 +27,20 @@ This is a rewrite of the original [dynastore](https://github.com/wolfeidau/dynas
 	client = dynamodb.NewFromConfig(cfg)
 	store := dynastorev2.New[string, string, []byte](client, "tickets-table")
 
-	err = store.Create(ctx, "customer", "01FCFSDXQ8EYFCNMEA7C2WJG74", []byte(`{"name": "Stax"}`))
+	res, err := store.Create(ctx, "customer", "01FCFSDXQ8EYFCNMEA7C2WJG74", []byte(`{"name": "Stax"}`))
 	if err != nil {
 		// handle error
 	}
+
+	// print out the version from the mutation result, this is used for optimistic locking
+	fmt.Println("version", res.Version)
 ```
 
 # Status
 
 * [x] Added CRUD with conditional checks and tests
 * [ ] List with pagination
-* [ ] [Optimistic Locking](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBMapper.OptimisticLocking.html) for Updates
+* [x] [Optimistic Locking](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBMapper.OptimisticLocking.html) for Updates
 * [ ] Locking
 * [ ] Leasing
 
