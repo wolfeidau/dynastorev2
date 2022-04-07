@@ -284,24 +284,25 @@ func (t *Store[P, S, V]) Delete(ctx context.Context, partitionKey P, sortKey S, 
 	return nil
 }
 
-// WriteWithTTL assign a TTL to the record when you write it to DDB
+// WriteWithTTL assigns a time to live (TTL) to the record when it is created or updated
 func (t *Store[P, S, V]) WriteWithTTL(ttl time.Duration) WriteOption[P, S, V] {
-	return WriteWithTTL[P, S, V](ttl)
+	return writeWithTTL[P, S, V](ttl)
 
 }
 
+// WriteWithVersion adds a condition check the provided version to enable optimistic locking
 func (t *Store[P, S, V]) WriteWithVersion(version int64) WriteOption[P, S, V] {
-	return WriteWithVersion[P, S, V](version)
+	return writeWithVersion[P, S, V](version)
 }
 
-// WriteWithExtraFields assign a map of extra fields persisted in DDB
+// WriteWithExtraFields assign extra fields provided to the record when written or updated
 func (t *Store[P, S, V]) WriteWithExtraFields(extraFields map[string]any) WriteOption[P, S, V] {
-	return WriteWithExtraFields[P, S, V](extraFields)
+	return writeWithExtraFields[P, S, V](extraFields)
 }
 
 // DeleteWithCheck delete with a check condition to ensure the record exists
 func (t *Store[P, S, V]) DeleteWithCheck(enabled bool) DeleteOption[P, S] {
-	return DeleteWithCheck[P, S](enabled)
+	return deleteWithCheck[P, S](enabled)
 }
 
 func (t *Store[P, S, V]) doUpdate(ctx context.Context, partitionKey P, sortKey S, value V, expr dexp.Expression) (*dynamodb.UpdateItemOutput, error) {

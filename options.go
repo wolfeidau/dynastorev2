@@ -62,19 +62,22 @@ func applyWriteOptions[P Key, S Key, V any](v *writeOptions[P, S, V], opts ...Wr
 	}
 }
 
-func WriteWithTTL[P Key, S Key, V any](ttl time.Duration) WriteOption[P, S, V] {
+// WriteWithTTL assigns a time to live (TTL) to the record when it is created or updated
+func writeWithTTL[P Key, S Key, V any](ttl time.Duration) WriteOption[P, S, V] {
 	return writeOptionFunc[P, S, V](func(opts *writeOptions[P, S, V]) {
 		opts.ttl = ttl
 	})
 }
 
-func WriteWithVersion[P Key, S Key, V any](version int64) WriteOption[P, S, V] {
+// WriteWithVersion adds a condition check the provided version to enable optimistic locking
+func writeWithVersion[P Key, S Key, V any](version int64) WriteOption[P, S, V] {
 	return writeOptionFunc[P, S, V](func(opts *writeOptions[P, S, V]) {
 		opts.version = version
 	})
 }
 
-func WriteWithExtraFields[P Key, S Key, V any](extraFields map[string]any) WriteOption[P, S, V] {
+// WriteWithExtraFields assign extra fields provided to the record when written or updated
+func writeWithExtraFields[P Key, S Key, V any](extraFields map[string]any) WriteOption[P, S, V] {
 	return writeOptionFunc[P, S, V](func(opts *writeOptions[P, S, V]) {
 		opts.extraFields = extraFields
 	})
@@ -130,7 +133,7 @@ func applyDeleteOptions[P Key, S Key](v *deleteOptions[P, S], opts ...DeleteOpti
 	}
 }
 
-func DeleteWithCheck[P Key, S Key](enabled bool) DeleteOption[P, S] {
+func deleteWithCheck[P Key, S Key](enabled bool) DeleteOption[P, S] {
 	return deleteOptionFunc[P, S](func(opts *deleteOptions[P, S]) {
 		opts.existsCheck = enabled
 	})
