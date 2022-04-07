@@ -44,6 +44,7 @@ type WriteOption[P Key, S Key, V any] interface {
 type writeOptions[P Key, S Key, V any] struct {
 	extraFields map[string]any
 	ttl         time.Duration
+	version     int64
 }
 
 // writeOptionFunc wraps a function and implements the WriteOption interface
@@ -64,6 +65,12 @@ func applyWriteOptions[P Key, S Key, V any](v *writeOptions[P, S, V], opts ...Wr
 func WriteWithTTL[P Key, S Key, V any](ttl time.Duration) WriteOption[P, S, V] {
 	return writeOptionFunc[P, S, V](func(opts *writeOptions[P, S, V]) {
 		opts.ttl = ttl
+	})
+}
+
+func WriteWithVersion[P Key, S Key, V any](version int64) WriteOption[P, S, V] {
+	return writeOptionFunc[P, S, V](func(opts *writeOptions[P, S, V]) {
+		opts.version = version
 	})
 }
 

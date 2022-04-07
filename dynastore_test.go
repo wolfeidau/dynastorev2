@@ -171,8 +171,9 @@ func TestCreate(t *testing.T) {
 	store := newStore(t)
 	part := mustRandPart(partKeyLen)
 
-	err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	res, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.NoError(err)
+	assert.Equal(int64(1), res.Version)
 }
 
 func TestGet(t *testing.T) {
@@ -181,7 +182,7 @@ func TestGet(t *testing.T) {
 	store := newStore(t)
 	part := mustRandPart(partKeyLen)
 
-	err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	_, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.NoError(err)
 
 	val, err := store.Get(context.Background(), part, "sort1")
@@ -195,11 +196,13 @@ func TestUpdate(t *testing.T) {
 	store := newStore(t)
 	part := mustRandPart(partKeyLen)
 
-	err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	res, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.NoError(err)
+	assert.Equal(int64(1), res.Version)
 
-	err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	res, err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.NoError(err)
+	assert.Equal(int64(2), res.Version)
 }
 
 func TestUpdateWithExtraFields(t *testing.T) {
@@ -208,10 +211,10 @@ func TestUpdateWithExtraFields(t *testing.T) {
 	store := newStore(t)
 	part := mustRandPart(partKeyLen)
 
-	err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	_, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.NoError(err)
 
-	err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
+	_, err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
 		map[string]any{
 			"created": time.Now(),
 		},
@@ -225,15 +228,31 @@ func TestUpdateWithFieldsReservedError(t *testing.T) {
 	store := newStore(t)
 	part := mustRandPart(partKeyLen)
 
-	err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	_, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.NoError(err)
 
-	err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
+	_, err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
 		map[string]any{
 			"id": "abc123",
 		},
 	))
 	assert.ErrorAs(err, &dynastorev2.ErrReservedField)
+}
+
+func TestUpdateWithVersion(t *testing.T) {
+	assert := require.New(t)
+
+	store := newStore(t)
+	part := mustRandPart(partKeyLen)
+
+	_, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	assert.NoError(err)
+
+	_, err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithVersion(1))
+	assert.NoError(err)
+
+	_, err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithVersion(100))
+	assert.Error(err)
 }
 
 func TestDelete(t *testing.T) {
@@ -242,7 +261,7 @@ func TestDelete(t *testing.T) {
 	store := newStore(t)
 	part := mustRandPart(partKeyLen)
 
-	err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	_, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.NoError(err)
 
 	err = store.Delete(context.Background(), part, "sort1")

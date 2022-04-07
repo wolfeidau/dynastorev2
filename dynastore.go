@@ -102,7 +102,7 @@ type fieldsDef struct {
 // Create a record in DynamoDB using the provided partition and sort keys, a payload containing the value
 //
 // Note this will use a condition to ensure the specified partition and sort keys don't exist in DynamoDB.
-func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, value V, options ...WriteOption[P, S, V]) error {
+func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, value V, options ...WriteOption[P, S, V]) (*MutationResult, error) {
 
 	ctx = setOperationDetails(ctx, "Create", partitionKey, sortKey)
 
@@ -111,7 +111,7 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 
 	update, err := t.buildUpdate(value, defaultOpts)
 	if err != nil {
-		return errors.Wrap(err, "dynastorev2: failed to build update")
+		return nil, errors.Wrap(err, "dynastorev2: failed to build update")
 	}
 
 	// assign a condition which requires the record to existing before being updated
@@ -119,15 +119,26 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 
 	expr, err := dexp.NewBuilder().WithUpdate(update).WithCondition(createCondition).Build()
 	if err != nil {
-		return errors.Wrap(err, "dynastorev2: failed to build update expression")
+		return nil, errors.Wrap(err, "dynastorev2: failed to build update expression")
 	}
 
-	_, err = t.doUpdate(ctx, partitionKey, sortKey, value, expr)
+	result, err := t.doUpdate(ctx, partitionKey, sortKey, value, expr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	var version int64
+	if attr, ok := result.Attributes[t.fields.versionName]; ok {
+		err := attributevalue.Unmarshal(attr, &version)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to extract version attribute")
+		}
+	}
+
+	return &MutationResult{
+		Version:          version,
+		ConsumedCapacity: result.ConsumedCapacity,
+	}, nil
 }
 
 // Get a record in DynamoDB using the provided partition and sort keys
@@ -179,7 +190,7 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 // Update a record in DynamoDB using the provided partition and sort keys, a payload containing the value
 //
 // Note this will use a condition to ensure the specified partition and sort keys exist in DynamoDB.
-func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, value V, options ...WriteOption[P, S, V]) error {
+func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, value V, options ...WriteOption[P, S, V]) (*MutationResult, error) {
 
 	ctx = setOperationDetails(ctx, "Update", partitionKey, sortKey)
 
@@ -188,23 +199,38 @@ func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, 
 
 	update, err := t.buildUpdate(value, defaultOpts)
 	if err != nil {
-		return errors.Wrap(err, "dynastorev2: failed to build update")
+		return nil, errors.Wrap(err, "dynastorev2: failed to build update")
 	}
 
 	// assign a condition which requires the record to existing before being updated
 	updateCondition := dexp.AttributeExists(dexp.Name(t.fields.partitionKeyName)).And(dexp.AttributeExists(dexp.Name(t.fields.sortKeyName)))
 
+	if defaultOpts.version > 0 {
+		updateCondition = updateCondition.And(dexp.Equal(dexp.Name(t.fields.versionName), dexp.Value(defaultOpts.version)))
+	}
+
 	expr, err := dexp.NewBuilder().WithUpdate(update).WithCondition(updateCondition).Build()
 	if err != nil {
-		return errors.Wrap(err, "dynastorev2: failed to build update expression")
+		return nil, errors.Wrap(err, "dynastorev2: failed to build update expression")
 	}
 
-	_, err = t.doUpdate(ctx, partitionKey, sortKey, value, expr)
+	result, err := t.doUpdate(ctx, partitionKey, sortKey, value, expr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	var version int64
+	if attr, ok := result.Attributes[t.fields.versionName]; ok {
+		err := attributevalue.Unmarshal(attr, &version)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to extract version attribute")
+		}
+	}
+
+	return &MutationResult{
+		ConsumedCapacity: result.ConsumedCapacity,
+		Version:          version,
+	}, nil
 }
 
 // Delete a record in DynamoDB using the provided partition and sort keys
@@ -264,6 +290,10 @@ func (t *Store[P, S, V]) WriteWithTTL(ttl time.Duration) WriteOption[P, S, V] {
 
 }
 
+func (t *Store[P, S, V]) WriteWithVersion(version int64) WriteOption[P, S, V] {
+	return WriteWithVersion[P, S, V](version)
+}
+
 // WriteWithExtraFields assign a map of extra fields persisted in DDB
 func (t *Store[P, S, V]) WriteWithExtraFields(extraFields map[string]any) WriteOption[P, S, V] {
 	return WriteWithExtraFields[P, S, V](extraFields)
@@ -288,6 +318,7 @@ func (t *Store[P, S, V]) doUpdate(ctx context.Context, partitionKey P, sortKey S
 		UpdateExpression:          expr.Update(),
 		ConditionExpression:       expr.Condition(),
 		ReturnConsumedCapacity:    types.ReturnConsumedCapacityTotal,
+		ReturnValues:              types.ReturnValueAllNew,
 	}
 
 	ctx = t.storeOptions.storeHooks.RequestBuilt(ctx, partitionKey, sortKey, updateItem)
@@ -321,7 +352,7 @@ func (t *Store[P, S, V]) buildKey(partitionKey P, sortKey S) (map[string]types.A
 
 func (t *Store[P, S, V]) buildUpdate(value V, options *writeOptions[P, S, V]) (dexp.UpdateBuilder, error) {
 	// increment the version attribute by one
-	update := dexp.Add(dexp.Name("version"), dexp.Value(1))
+	update := dexp.Add(dexp.Name(t.fields.versionName), dexp.Value(1))
 
 	val, err := attributevalue.Marshal(value)
 	if err != nil {
