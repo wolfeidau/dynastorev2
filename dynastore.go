@@ -102,7 +102,7 @@ type fieldsDef struct {
 // Create a record in DynamoDB using the provided partition and sort keys, a payload containing the value
 //
 // Note this will use a condition to ensure the specified partition and sort keys don't exist in DynamoDB.
-func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, value V, options ...WriteOption[P, S, V]) (*MutationResult, error) {
+func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, value V, options ...WriteOption[P, S, V]) (*OperationResult, error) {
 
 	ctx = setOperationDetails(ctx, "Create", partitionKey, sortKey)
 
@@ -135,14 +135,14 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 		}
 	}
 
-	return &MutationResult{
+	return &OperationResult{
 		Version:          version,
 		ConsumedCapacity: result.ConsumedCapacity,
 	}, nil
 }
 
 // Get a record in DynamoDB using the provided partition and sort keys
-func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, options ...ReadOption[P, S]) (V, error) {
+func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, options ...ReadOption[P, S]) (*OperationResult, V, error) {
 
 	var val V
 
@@ -153,7 +153,7 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 
 	key, err := t.buildKey(partitionKey, sortKey)
 	if err != nil {
-		return val, err
+		return nil, val, err
 	}
 
 	getItem := &dynamodb.GetItemInput{
@@ -167,12 +167,7 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 
 	readResp, err := t.client.GetItem(ctx, getItem)
 	if err != nil {
-		// var oe *types.ConditionalCheckFailedException
-		// if errors.As(err, &oe) {
-		// 	return ErrGetFailedKeyNotExists
-		// }
-
-		return val, errors.Wrap(err, "dynastorev2: failed to get record")
+		return nil, val, errors.Wrap(err, "dynastorev2: failed to get record")
 	}
 
 	t.storeOptions.storeHooks.ResponseReceived(ctx, partitionKey, sortKey, readResp.ConsumedCapacity)
@@ -180,17 +175,28 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 	if attr, ok := readResp.Item[t.fields.payloadName]; ok {
 		err = attributevalue.Unmarshal(attr, &val)
 		if err != nil {
-			return val, errors.Wrap(err, "dynastorev2: failed to unmarshal payload attribute")
+			return nil, val, errors.Wrap(err, "dynastorev2: failed to unmarshal payload attribute")
 		}
 	}
 
-	return val, nil
+	var version int64
+	if attr, ok := readResp.Item[t.fields.versionName]; ok {
+		err := attributevalue.Unmarshal(attr, &version)
+		if err != nil {
+			return nil, val, errors.Wrap(err, "dynastorev2: failed to extract version attribute")
+		}
+	}
+
+	return &OperationResult{
+		Version:          version,
+		ConsumedCapacity: readResp.ConsumedCapacity,
+	}, val, nil
 }
 
 // Update a record in DynamoDB using the provided partition and sort keys, a payload containing the value
 //
 // Note this will use a condition to ensure the specified partition and sort keys exist in DynamoDB.
-func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, value V, options ...WriteOption[P, S, V]) (*MutationResult, error) {
+func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, value V, options ...WriteOption[P, S, V]) (*OperationResult, error) {
 
 	ctx = setOperationDetails(ctx, "Update", partitionKey, sortKey)
 
@@ -223,11 +229,11 @@ func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, 
 	if attr, ok := result.Attributes[t.fields.versionName]; ok {
 		err := attributevalue.Unmarshal(attr, &version)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to extract version attribute")
+			return nil, errors.Wrap(err, "dynastorev2: failed to extract version attribute")
 		}
 	}
 
-	return &MutationResult{
+	return &OperationResult{
 		ConsumedCapacity: result.ConsumedCapacity,
 		Version:          version,
 	}, nil
