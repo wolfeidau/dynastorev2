@@ -1,8 +1,7 @@
 # dynastorev2
 
-This package provides a CRUD (create, read, update and delete) store for [AWS DynamoDB](https://aws.amazon.com/dynamodb/) using the [AWS Go SDK v2](https://github.com/aws/aws-sdk-go-v2/).
+This package provides a CRUD (create, read, update and delete) store for [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) using the [AWS Go SDK v2](https://github.com/aws/aws-sdk-go-v2/).
 
-[![GitHub Actions status](https://github.com/wolfeidau/dynastorev2/workflows/Go/badge.svg?branch=master)](https://github.com/wolfeidau/dynastorev2/actions?query=workflow%3AGo)
 [![Go Report Card](https://goreportcard.com/badge/github.com/wolfeidau/dynastorev2)](https://goreportcard.com/report/github.com/wolfeidau/dynastorev2)
 [![Documentation](https://godoc.org/github.com/wolfeidau/dynastorev2?status.svg)](https://godoc.org/github.com/wolfeidau/dynastorev2)
 
@@ -36,10 +35,21 @@ This is a rewrite of the original [dynastore](https://github.com/wolfeidau/dynas
 	fmt.Println("version", res.Version)
 ```
 
+**Note:** This library doesn't aim to provide a high level abstraction for Amazon DynamoDB, you will need to learn how it works to understand some of the limitations to use it successfully.
+
+# Implementation Tips
+
+Before you get started i recommend you review some of the [code examples](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/service_code_examples.html) provided in the Amazon DynamoDB documentation.
+
+1. Don't use Amazon DynamoDB if you have anything beyond a simple K/V compatible model until you understand your [access patterns](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-modeling-nosql-B.html).
+2. Use a [single-table design](https://aws.amazon.com/blogs/compute/creating-a-single-table-design-with-amazon-dynamodb/) to model your data.
+3. Use [Universally Unique Lexicographically Sortable Identifier](https://github.com/ulid/spec) (ULID) for sort keys, this will help ensure a rational order of data in the table. Sort key by default is sorted in descending order, oldest first, newest last, exploiting this behaviour may mitigate some of the limitations with Amazon DynamoDB.
+4. If your using `WriteWithTTL` you need to deal with the fact that Amazon DynamoDB doesn't delete expired data straight away, records can hang around for up to [48 hours according to the documentation](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html).
+
 # Status
 
 * [x] Added CRUD with conditional checks and tests
-* [ ] List with pagination
+* [x] List with pagination
 * [x] [Optimistic Locking](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBMapper.OptimisticLocking.html) for Updates
 * [ ] Locking
 * [ ] Leasing

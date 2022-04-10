@@ -2,6 +2,8 @@ package dynastorev2
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -79,10 +81,6 @@ func New[P Key, S Key, V any](client *dynamodb.Client, tableName string, options
 				},
 			},
 		},
-		// writeOptions: &writeOptions[P, S, V]{
-		// 	extraFields: make(map[string]any),
-		// 	ttl:         0,
-		// },
 	}
 
 	applyStoreOptions(s.storeOptions, options...)
@@ -116,6 +114,8 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 
 	// assign a condition which requires the record to existing before being updated
 	createCondition := dexp.AttributeNotExists(dexp.Name(t.fields.partitionKeyName)).And(dexp.AttributeNotExists(dexp.Name(t.fields.sortKeyName)))
+
+	// TODO Add an exclusion for expired records which haven't been cleaned up yet
 
 	expr, err := dexp.NewBuilder().WithUpdate(update).WithCondition(createCondition).Build()
 	if err != nil {
@@ -156,6 +156,8 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 		return nil, val, err
 	}
 
+	// TODO Add an exclusion for expired records which haven't been cleaned up yet
+
 	getItem := &dynamodb.GetItemInput{
 		TableName:              aws.String(t.tableName),
 		Key:                    key,
@@ -191,6 +193,79 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 		Version:          version,
 		ConsumedCapacity: readResp.ConsumedCapacity,
 	}, val, nil
+}
+
+// ListBySortKeyPrefix perform a query of the DynamoDB using hte partition key and a string prefix
+// for the sort key. This is typically used when hierarchies are stored in this partition. For example
+// if we have a customer addresses with an sort key with a format of (customer id)/(address id),
+// to list the addresses for a customer you list using the customer id as the prefix.
+//
+// Notes:
+// 1. You the sort key must be a string to support this operation, this is a limitation of the AWs SDK.
+// 2. ListBySortKeyPrefix will also return expired records as these may hang around for up to 48 hours according to the documentation, see: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html
+func (t *Store[P, S, V]) ListBySortKeyPrefix(ctx context.Context, partitionKey P, prefix string, options ...ReadOption[P, S]) (*OperationResult, []V, error) {
+	var vals []V
+
+	ctx = setOperationDetails(ctx, "ListBySortKeyPrefix", partitionKey, prefix)
+
+	defaultOpts := t.defaultReadOptions()
+	applyReadOptions(defaultOpts, options...)
+
+	pk, err := attributevalue.Marshal(partitionKey)
+	if err != nil {
+		return nil, vals, errors.Wrap(err, "dynastorev2: failed to build partition key")
+	}
+
+	keyCond := dexp.KeyEqual(dexp.Key(t.fields.partitionKeyName), dexp.Value(pk)).And(dexp.KeyBeginsWith(dexp.Key(t.fields.sortKeyName), prefix))
+
+	expr, err := dexp.NewBuilder().WithKeyCondition(keyCond).Build()
+	if err != nil {
+		return nil, vals, errors.Wrap(err, "dynastorev2: failed to build list expression")
+	}
+
+	queryInput := &dynamodb.QueryInput{
+		TableName:                 aws.String(t.tableName),
+		ReturnConsumedCapacity:    types.ReturnConsumedCapacityTotal,
+		KeyConditionExpression:    expr.KeyCondition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}
+
+	if defaultOpts.lastEvaluatedKey != "" {
+		err = parseLastEvaluatedKey(defaultOpts.lastEvaluatedKey, queryInput)
+		if err != nil {
+			return nil, vals, err
+		}
+	}
+
+	if defaultOpts.limit > 0 {
+		queryInput.Limit = aws.Int32(defaultOpts.limit)
+	}
+
+	res, err := t.client.Query(ctx, queryInput)
+	if err != nil {
+		return nil, vals, errors.Wrap(err, "dynastorev2: failed to execute query")
+	}
+
+	for _, item := range res.Items {
+		var val V
+		err = attributevalue.Unmarshal(item[t.fields.payloadName], &val)
+		if err != nil {
+			return nil, vals, errors.Wrap(err, "dynastorev2: failed to unmarshal item")
+		}
+
+		vals = append(vals, val)
+	}
+
+	lastEvaluatedKey, err := encodeLastEvaluatedKey(res)
+	if err != nil {
+		return nil, vals, err
+	}
+
+	return &OperationResult{
+		ConsumedCapacity: res.ConsumedCapacity,
+		LastEvaluatedKey: lastEvaluatedKey,
+	}, vals, nil
 }
 
 // Update a record in DynamoDB using the provided partition and sort keys, a payload containing the value
@@ -306,6 +381,21 @@ func (t *Store[P, S, V]) WriteWithExtraFields(extraFields map[string]any) WriteO
 	return writeWithExtraFields[P, S, V](extraFields)
 }
 
+// ReadWithConsistentRead enable the consistent read flag when performing get operations
+func (t *Store[P, S, V]) ReadWithConsistentRead(consistentRead bool) ReadOption[P, S] {
+	return readWithConsistentRead[P, S](consistentRead)
+}
+
+// ReadWithLastEvaluatedKey provide a last evaluated key when performing list operations
+func (t *Store[P, S, V]) ReadWithLastEvaluatedKey(lastEvaluatedKey string) ReadOption[P, S] {
+	return readWithLastEvaluatedKey[P, S](lastEvaluatedKey)
+}
+
+// ReadWithLimit provide a record count limit when performing list operations
+func (t *Store[P, S, V]) ReadWithLimit(limit int32) ReadOption[P, S] {
+	return readWithLimit[P, S](limit)
+}
+
 // DeleteWithCheck delete with a check condition to ensure the record exists
 func (t *Store[P, S, V]) DeleteWithCheck(enabled bool) DeleteOption[P, S] {
 	return deleteWithCheck[P, S](enabled)
@@ -346,6 +436,7 @@ func (t *Store[P, S, V]) buildKey(partitionKey P, sortKey S) (map[string]types.A
 	if err != nil {
 		return nil, errors.Wrap(err, "dynastorev2: failed to build partition key")
 	}
+
 	sk, err := attributevalue.Marshal(sortKey)
 	if err != nil {
 		return nil, errors.Wrap(err, "dynastorev2: failed to build sort key")
@@ -394,6 +485,45 @@ func (t *Store[P, S, V]) buildUpdate(value V, options *writeOptions[P, S, V]) (d
 	}
 
 	return update, nil
+}
+
+func parseLastEvaluatedKey(lastEvaluatedKey string, queryInput *dynamodb.QueryInput) error {
+	data, err := base64.RawURLEncoding.DecodeString(lastEvaluatedKey)
+	if err != nil {
+		return errors.Wrap(err, "dynastorev2: failed to decode last evaluated key")
+	}
+
+	m := make(map[string]string)
+
+	err = json.Unmarshal(data, &m)
+	if err != nil {
+		return errors.Wrap(err, "dynastorev2: failed to unmarshal last evaluated key")
+	}
+
+	queryInput.ExclusiveStartKey, err = attributevalue.MarshalMap(&m)
+	if err != nil {
+		return errors.Wrap(err, "dynastorev2: failed to marshal map into last evaluated key")
+	}
+	return nil
+}
+
+func encodeLastEvaluatedKey(res *dynamodb.QueryOutput) (string, error) {
+	if res.LastEvaluatedKey == nil {
+		return "", nil
+	}
+
+	m := make(map[string]string)
+	err := attributevalue.UnmarshalMap(res.LastEvaluatedKey, &m)
+	if err != nil {
+		return "", errors.Wrap(err, "dynastorev2: failed to unmarshal last evaluated key to map")
+	}
+
+	data, err := json.Marshal(&m)
+	if err != nil {
+		return "", errors.Wrap(err, "dynastorev2: failed to marshal last evaluated key")
+	}
+
+	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
 func (t *Store[P, S, V]) isReservedField(k string) bool {

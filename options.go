@@ -90,7 +90,9 @@ type ReadOption[P Key, S Key] interface {
 
 // readOptions holds all available read configuration options
 type readOptions[P Key, S Key] struct {
-	consistentRead bool
+	consistentRead   bool
+	lastEvaluatedKey string
+	limit            int32
 }
 
 // readOptionFunc wraps a function and implements the ReadOption interface
@@ -106,6 +108,27 @@ func applyReadOptions[P Key, S Key](v *readOptions[P, S], opts ...ReadOption[P, 
 	for i := range opts {
 		opts[i].apply(v)
 	}
+}
+
+// readWithConsistentRead enable the consistent read flag when performing get operations
+func readWithConsistentRead[P Key, S Key](consistentRead bool) ReadOption[P, S] {
+	return readOptionFunc[P, S](func(opts *readOptions[P, S]) {
+		opts.consistentRead = consistentRead
+	})
+}
+
+// readWithLastEvaluatedKey provide a last evaluated key when performing list operations
+func readWithLastEvaluatedKey[P Key, S Key](lastEvaluatedKey string) ReadOption[P, S] {
+	return readOptionFunc[P, S](func(opts *readOptions[P, S]) {
+		opts.lastEvaluatedKey = lastEvaluatedKey
+	})
+}
+
+// readWithLimit provide a record limit when performing list operations
+func readWithLimit[P Key, S Key](limit int32) ReadOption[P, S] {
+	return readOptionFunc[P, S](func(opts *readOptions[P, S]) {
+		opts.limit = limit
+	})
 }
 
 // DeleteOption sets a specific delete option
