@@ -12,6 +12,7 @@ This is a rewrite of the original [dynastore](https://github.com/wolfeidau/dynas
 1. It uses the Generics feature added in Go 1.18
 2. It is built on AWS Go SDK v2.
 3. The API has been simplified.
+4. I am still learning how to use Generics in Go...
 
 # Example
 
@@ -24,9 +25,18 @@ This is a rewrite of the original [dynastore](https://github.com/wolfeidau/dynas
 	}
 
 	client = dynamodb.NewFromConfig(cfg)
-	store := dynastorev2.New[string, string, []byte](client, "tickets-table")
+	customerStore := dynastorev2.New[string, string, []byte](client, "tickets-table")
 
-	res, err := store.Create(ctx, "customer", "01FCFSDXQ8EYFCNMEA7C2WJG74", []byte(`{"name": "Stax"}`))
+	fields := map[string]any{
+		"created": time.Now().UTC().Round(time.Millisecond),
+	}
+
+	res, err := customerStore.Create(ctx,
+		"customer",                                 // partition key
+		"01FCFSDXQ8EYFCNMEA7C2WJG74",               // sort key
+		[]byte(`{"name": "Stax"}`),                 // value, in this case JSON encoded value
+		customerStore.WriteWithExtraFields(fields), // extra fields which could be indexed in the future
+	)
 	if err != nil {
 		// handle error
 	}
@@ -34,6 +44,12 @@ This is a rewrite of the original [dynastore](https://github.com/wolfeidau/dynas
 	// print out the version from the mutation result, this is used for optimistic locking
 	fmt.Println("version", res.Version)
 ```
+
+Creates a record which looks like this in Amazon DynamoDB.
+
+| id (Partition Key) | name (Sort Key) | version | payload | expires | created |
+| --------------- | --------------- | --------------- | --------------- | --------------- | --------------- |
+| customer | 01FCFSDXQ8EYFCNMEA7C2WJG74 | 1 | `{"name": "Stax"}` | null | `2022-04-10T06:27:16.994Z` |
 
 **Note:** This library doesn't aim to provide a high level abstraction for Amazon DynamoDB, you will need to learn how it works to understand some of the limitations to use it successfully.
 

@@ -3,6 +3,7 @@ package dynastorev2_test
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -18,9 +19,18 @@ func ExampleCreate() {
 	}
 
 	client = dynamodb.NewFromConfig(cfg)
-	store := dynastorev2.New[string, string, []byte](client, "tickets-table")
+	customerStore := dynastorev2.New[string, string, []byte](client, "tickets-table")
 
-	res, err := store.Create(ctx, "customer", "01FCFSDXQ8EYFCNMEA7C2WJG74", []byte(`{"name": "Stax"}`))
+	fields := map[string]any{
+		"created": time.Now().UTC().Round(time.Millisecond),
+	}
+
+	res, err := customerStore.Create(ctx,
+		"customer",                                 // partition key
+		"01FCFSDXQ8EYFCNMEA7C2WJG74",               // sort key
+		[]byte(`{"name": "Stax"}`),                 // value, in this case JSON encoded value
+		customerStore.WriteWithExtraFields(fields), // extra fields which could be indexed in the future
+	)
 	if err != nil {
 		// handle error
 	}
