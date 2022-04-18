@@ -44,6 +44,13 @@ func TestCreate(t *testing.T) {
 	res, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.NoError(err)
 	assert.Equal(int64(1), res.Version)
+
+	res, err = store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
+	assert.Error(err)
+
+	res, err = store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithCreateConstraintDisabled(true))
+	assert.NoError(err)
+	assert.Equal(int64(2), res.Version)
 }
 
 func TestGet(t *testing.T) {

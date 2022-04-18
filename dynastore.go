@@ -112,12 +112,18 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 		return nil, errors.Wrap(err, "dynastorev2: failed to build update")
 	}
 
-	// assign a condition which requires the record to existing before being updated
-	createCondition := dexp.AttributeNotExists(dexp.Name(t.fields.partitionKeyName)).And(dexp.AttributeNotExists(dexp.Name(t.fields.sortKeyName)))
+	builder := dexp.NewBuilder().WithUpdate(update)
+
+	if !defaultOpts.createConstraintDisabled {
+		// assign a condition which requires the record to existing before being updated
+		createCondition := dexp.AttributeNotExists(dexp.Name(t.fields.partitionKeyName)).And(dexp.AttributeNotExists(dexp.Name(t.fields.sortKeyName)))
+
+		builder = builder.WithCondition(createCondition)
+	}
 
 	// TODO Add an exclusion for expired records which haven't been cleaned up yet
 
-	expr, err := dexp.NewBuilder().WithUpdate(update).WithCondition(createCondition).Build()
+	expr, err := builder.Build()
 	if err != nil {
 		return nil, errors.Wrap(err, "dynastorev2: failed to build update expression")
 	}
@@ -379,6 +385,11 @@ func (t *Store[P, S, V]) WriteWithVersion(version int64) WriteOption[P, S, V] {
 // WriteWithExtraFields assign extra fields provided to the record when written or updated
 func (t *Store[P, S, V]) WriteWithExtraFields(extraFields map[string]any) WriteOption[P, S, V] {
 	return writeWithExtraFields[P, S, V](extraFields)
+}
+
+// WriteWithCreateConstraintDisabled disable the check on create for existence of the rows
+func (t *Store[P, S, V]) WriteWithCreateConstraintDisabled(createConstraintDisabled bool) WriteOption[P, S, V] {
+	return writeWithCreateConstraintDisabled[P, S, V](createConstraintDisabled)
 }
 
 // ReadWithConsistentRead enable the consistent read flag when performing get operations
