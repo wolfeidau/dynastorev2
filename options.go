@@ -42,9 +42,10 @@ type WriteOption[P Key, S Key, V any] interface {
 
 // options holds all available write configuration options
 type writeOptions[P Key, S Key, V any] struct {
-	extraFields map[string]any
-	ttl         time.Duration
-	version     int64
+	extraFields              map[string]any
+	ttl                      time.Duration
+	version                  int64
+	createConstraintDisabled bool
 }
 
 // writeOptionFunc wraps a function and implements the WriteOption interface
@@ -80,6 +81,13 @@ func writeWithVersion[P Key, S Key, V any](version int64) WriteOption[P, S, V] {
 func writeWithExtraFields[P Key, S Key, V any](extraFields map[string]any) WriteOption[P, S, V] {
 	return writeOptionFunc[P, S, V](func(opts *writeOptions[P, S, V]) {
 		opts.extraFields = extraFields
+	})
+}
+
+// WriteWithCreateConstraintDisabled disable the check on create for existence of the rows
+func writeWithCreateConstraintDisabled[P Key, S Key, V any](createConstraintDisabled bool) WriteOption[P, S, V] {
+	return writeOptionFunc[P, S, V](func(opts *writeOptions[P, S, V]) {
+		opts.createConstraintDisabled = createConstraintDisabled
 	})
 }
 
