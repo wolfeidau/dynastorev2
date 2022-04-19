@@ -39,6 +39,9 @@ var (
 
 	// ErrDeleteFailedKeyNotExists delete failed due to constraint added which checks the record exists when deleting
 	ErrDeleteFailedKeyNotExists = errors.New("dynastorev2: delete failed as the partition and sort keys didn't exist in the table")
+
+	// ErrKeyNotExists get failed due to partition and sort keys didn't exist in the table
+	ErrKeyNotExists = errors.New("dynastorev2: get failed as the partition and sort keys didn't exist in the table")
 )
 
 // Key ensures the partition or sort key used is a valid type for DynamoDB, note this is also
@@ -179,6 +182,10 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 	}
 
 	t.storeOptions.storeHooks.ResponseReceived(ctx, partitionKey, sortKey, readResp.ConsumedCapacity)
+
+	if readResp.Item == nil {
+		return nil, val, ErrKeyNotExists
+	}
 
 	if attr, ok := readResp.Item[t.fields.payloadName]; ok {
 		err = attributevalue.Unmarshal(attr, &val)
