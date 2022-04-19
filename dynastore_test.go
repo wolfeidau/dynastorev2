@@ -66,6 +66,11 @@ func TestGet(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal([]byte("data"), val)
 	assert.Equal(int64(1), op.Version)
+
+	op, val, err = store.Get(context.Background(), part, "sort33")
+	assert.Error(err)
+	assert.Nil(op)
+	assert.Nil(val)
 }
 
 func TestGetStruct(t *testing.T) {
