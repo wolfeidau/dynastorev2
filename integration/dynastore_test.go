@@ -1,4 +1,4 @@
-package dynastorev2_test
+package integration
 
 import (
 	"context"
@@ -47,6 +47,7 @@ func TestCreate(t *testing.T) {
 
 	res, err = store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second))
 	assert.Error(err)
+	assert.Nil(res)
 
 	res, err = store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithCreateConstraintDisabled(true))
 	assert.NoError(err)

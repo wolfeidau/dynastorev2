@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -11,7 +13,6 @@ import (
 	dexp "github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/pkg/errors"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 )
@@ -57,8 +58,8 @@ type Store[P Key, S Key, V any] struct {
 	client       *dynamodb.Client
 	tableName    string
 	fields       fieldsDef
-	storeOptions *storeOptions[P, S, V]
-	// writeOptions  *writeOptions[P, S, V]
+	storeOptions *StoreOptions[P, S, V]
+	// WriteOptions  *WriteOptions[P, S, V]
 	// deleteOptions *deleteOptions[P, S]
 }
 
@@ -74,7 +75,7 @@ func New[P Key, S Key, V any](client *dynamodb.Client, tableName string, options
 			versionName:      DefaultVersionAttribute,
 			payloadName:      DefaultPayloadAttribute,
 		},
-		storeOptions: &storeOptions[P, S, V]{
+		storeOptions: &StoreOptions[P, S, V]{
 			storeHooks: &StoreHooks[P, S, V]{
 				RequestBuilt: func(ctx context.Context, pk P, sk S, params any) context.Context {
 					return ctx
@@ -86,7 +87,7 @@ func New[P Key, S Key, V any](client *dynamodb.Client, tableName string, options
 		},
 	}
 
-	applyStoreOptions(s.storeOptions, options...)
+	ApplyStoreOptions(s.storeOptions, options...)
 
 	return s
 }
@@ -108,11 +109,11 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 	ctx = setOperationDetails(ctx, "Create", partitionKey, sortKey)
 
 	defaultOpts := t.defaultWriteOptions()
-	applyWriteOptions(defaultOpts, options...)
+	ApplyWriteOptions(defaultOpts, options...)
 
 	update, err := t.buildUpdate(value, defaultOpts)
 	if err != nil {
-		return nil, errors.Wrap(err, "dynastorev2: failed to build update")
+		return nil, fmt.Errorf("dynastorev2: failed to build update: %w", err)
 	}
 
 	builder := dexp.NewBuilder().WithUpdate(update)
@@ -128,7 +129,7 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 
 	expr, err := builder.Build()
 	if err != nil {
-		return nil, errors.Wrap(err, "dynastorev2: failed to build update expression")
+		return nil, fmt.Errorf("dynastorev2: failed to build update expression: %w", err)
 	}
 
 	result, err := t.doUpdate(ctx, partitionKey, sortKey, value, expr)
@@ -140,7 +141,7 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 	if attr, ok := result.Attributes[t.fields.versionName]; ok {
 		err := attributevalue.Unmarshal(attr, &version)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to extract version attribute")
+			return nil, fmt.Errorf("failed to extract version attribute: %w", err)
 		}
 	}
 
@@ -158,7 +159,7 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 	ctx = setOperationDetails(ctx, "Get", partitionKey, sortKey)
 
 	defaultOpts := t.defaultReadOptions()
-	applyReadOptions(defaultOpts, options...)
+	ApplyReadOptions(defaultOpts, options...)
 
 	key, err := t.buildKey(partitionKey, sortKey)
 	if err != nil {
@@ -178,7 +179,7 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 
 	readResp, err := t.client.GetItem(ctx, getItem)
 	if err != nil {
-		return nil, val, errors.Wrap(err, "dynastorev2: failed to get record")
+		return nil, val, fmt.Errorf("dynastorev2: failed to get record: %w", err)
 	}
 
 	t.storeOptions.storeHooks.ResponseReceived(ctx, partitionKey, sortKey, readResp.ConsumedCapacity)
@@ -190,7 +191,7 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 	if attr, ok := readResp.Item[t.fields.payloadName]; ok {
 		err = attributevalue.Unmarshal(attr, &val)
 		if err != nil {
-			return nil, val, errors.Wrap(err, "dynastorev2: failed to unmarshal payload attribute")
+			return nil, val, fmt.Errorf("dynastorev2: failed to unmarshal payload attribute: %w", err)
 		}
 	}
 
@@ -198,7 +199,7 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 	if attr, ok := readResp.Item[t.fields.versionName]; ok {
 		err := attributevalue.Unmarshal(attr, &version)
 		if err != nil {
-			return nil, val, errors.Wrap(err, "dynastorev2: failed to extract version attribute")
+			return nil, val, fmt.Errorf("dynastorev2: failed to extract version attribute: %w", err)
 		}
 	}
 
@@ -222,18 +223,18 @@ func (t *Store[P, S, V]) ListBySortKeyPrefix(ctx context.Context, partitionKey P
 	ctx = setOperationDetails(ctx, "ListBySortKeyPrefix", partitionKey, prefix)
 
 	defaultOpts := t.defaultReadOptions()
-	applyReadOptions(defaultOpts, options...)
+	ApplyReadOptions(defaultOpts, options...)
 
 	pk, err := attributevalue.Marshal(partitionKey)
 	if err != nil {
-		return nil, vals, errors.Wrap(err, "dynastorev2: failed to build partition key")
+		return nil, vals, fmt.Errorf("dynastorev2: failed to build partition key: %w", err)
 	}
 
 	keyCond := dexp.KeyEqual(dexp.Key(t.fields.partitionKeyName), dexp.Value(pk)).And(dexp.KeyBeginsWith(dexp.Key(t.fields.sortKeyName), prefix))
 
 	expr, err := dexp.NewBuilder().WithKeyCondition(keyCond).Build()
 	if err != nil {
-		return nil, vals, errors.Wrap(err, "dynastorev2: failed to build list expression")
+		return nil, vals, fmt.Errorf("dynastorev2: failed to build list expression: %w", err)
 	}
 
 	queryInput := &dynamodb.QueryInput{
@@ -257,14 +258,14 @@ func (t *Store[P, S, V]) ListBySortKeyPrefix(ctx context.Context, partitionKey P
 
 	res, err := t.client.Query(ctx, queryInput)
 	if err != nil {
-		return nil, vals, errors.Wrap(err, "dynastorev2: failed to execute query")
+		return nil, vals, fmt.Errorf("dynastorev2: failed to execute query: %w", err)
 	}
 
 	for _, item := range res.Items {
 		var val V
 		err = attributevalue.Unmarshal(item[t.fields.payloadName], &val)
 		if err != nil {
-			return nil, vals, errors.Wrap(err, "dynastorev2: failed to unmarshal item")
+			return nil, vals, fmt.Errorf("dynastorev2: failed to unmarshal item: %w", err)
 		}
 
 		vals = append(vals, val)
@@ -289,11 +290,11 @@ func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, 
 	ctx = setOperationDetails(ctx, "Update", partitionKey, sortKey)
 
 	defaultOpts := t.defaultWriteOptions()
-	applyWriteOptions(defaultOpts, options...)
+	ApplyWriteOptions(defaultOpts, options...)
 
 	update, err := t.buildUpdate(value, defaultOpts)
 	if err != nil {
-		return nil, errors.Wrap(err, "dynastorev2: failed to build update")
+		return nil, fmt.Errorf("dynastorev2: failed to build update: %w", err)
 	}
 
 	// assign a condition which requires the record to existing before being updated
@@ -305,7 +306,7 @@ func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, 
 
 	expr, err := dexp.NewBuilder().WithUpdate(update).WithCondition(updateCondition).Build()
 	if err != nil {
-		return nil, errors.Wrap(err, "dynastorev2: failed to build update expression")
+		return nil, fmt.Errorf("dynastorev2: failed to build update expression: %w", err)
 	}
 
 	result, err := t.doUpdate(ctx, partitionKey, sortKey, value, expr)
@@ -317,7 +318,7 @@ func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, 
 	if attr, ok := result.Attributes[t.fields.versionName]; ok {
 		err := attributevalue.Unmarshal(attr, &version)
 		if err != nil {
-			return nil, errors.Wrap(err, "dynastorev2: failed to extract version attribute")
+			return nil, fmt.Errorf("dynastorev2: failed to extract version attribute: %w", err)
 		}
 	}
 
@@ -332,7 +333,7 @@ func (t *Store[P, S, V]) Delete(ctx context.Context, partitionKey P, sortKey S, 
 	ctx = setOperationDetails(ctx, "Delete", partitionKey, sortKey)
 
 	defaultOpts := t.defaultDeleteOptions()
-	applyDeleteOptions(defaultOpts, options...)
+	ApplyDeleteOptions(defaultOpts, options...)
 
 	builder := dexp.NewBuilder()
 
@@ -344,7 +345,7 @@ func (t *Store[P, S, V]) Delete(ctx context.Context, partitionKey P, sortKey S, 
 
 	expr, err := builder.Build()
 	if err != nil {
-		return errors.Wrap(err, "dynastorev2: failed to build update expression")
+		return fmt.Errorf("dynastorev2: failed to build update expression: %w", err)
 	}
 
 	key, err := t.buildKey(partitionKey, sortKey)
@@ -370,7 +371,7 @@ func (t *Store[P, S, V]) Delete(ctx context.Context, partitionKey P, sortKey S, 
 			return ErrDeleteFailedKeyNotExists
 		}
 
-		return errors.Wrap(err, "dynastorev2: failed to delete record")
+		return fmt.Errorf("dynastorev2: failed to delete record: %w", err)
 	}
 
 	t.storeOptions.storeHooks.ResponseReceived(ctx, partitionKey, sortKey, deteteResp.ConsumedCapacity)
@@ -440,7 +441,7 @@ func (t *Store[P, S, V]) doUpdate(ctx context.Context, partitionKey P, sortKey S
 
 	updateResp, err := t.client.UpdateItem(ctx, updateItem)
 	if err != nil {
-		return nil, errors.Wrap(err, "dynastorev2: failed to update item")
+		return nil, fmt.Errorf("dynastorev2: failed to update item: %w", err)
 	}
 
 	t.storeOptions.storeHooks.ResponseReceived(ctx, partitionKey, sortKey, updateResp.ConsumedCapacity)
@@ -452,12 +453,12 @@ func (t *Store[P, S, V]) buildKey(partitionKey P, sortKey S) (map[string]types.A
 
 	pk, err := attributevalue.Marshal(partitionKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "dynastorev2: failed to build partition key")
+		return nil, fmt.Errorf("dynastorev2: failed to build partition key: %w", err)
 	}
 
 	sk, err := attributevalue.Marshal(sortKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "dynastorev2: failed to build sort key")
+		return nil, fmt.Errorf("dynastorev2: failed to build sort key: %w", err)
 	}
 
 	return map[string]types.AttributeValue{
@@ -466,13 +467,13 @@ func (t *Store[P, S, V]) buildKey(partitionKey P, sortKey S) (map[string]types.A
 	}, nil
 }
 
-func (t *Store[P, S, V]) buildUpdate(value V, options *writeOptions[P, S, V]) (dexp.UpdateBuilder, error) {
+func (t *Store[P, S, V]) buildUpdate(value V, options *WriteOptions[P, S, V]) (dexp.UpdateBuilder, error) {
 	// increment the version attribute by one
 	update := dexp.Add(dexp.Name(t.fields.versionName), dexp.Value(1))
 
 	val, err := attributevalue.Marshal(value)
 	if err != nil {
-		return update, errors.Wrap(err, "dynastorev2: failed to marshal value")
+		return update, fmt.Errorf("dynastorev2: failed to marshal value: %w", err)
 	}
 
 	// assign the value to a field called payload
@@ -488,7 +489,7 @@ func (t *Store[P, S, V]) buildUpdate(value V, options *writeOptions[P, S, V]) (d
 
 			val, err := attributevalue.Marshal(v)
 			if err != nil {
-				return update, errors.Wrap(err, "dynastorev2: failed to marshal extra field")
+				return update, fmt.Errorf("dynastorev2: failed to marshal extra field: %w", err)
 			}
 
 			update = update.Set(dexp.Name(k), dexp.Value(val))
@@ -508,19 +509,19 @@ func (t *Store[P, S, V]) buildUpdate(value V, options *writeOptions[P, S, V]) (d
 func parseLastEvaluatedKey(lastEvaluatedKey string, queryInput *dynamodb.QueryInput) error {
 	data, err := base64.RawURLEncoding.DecodeString(lastEvaluatedKey)
 	if err != nil {
-		return errors.Wrap(err, "dynastorev2: failed to decode last evaluated key")
+		return fmt.Errorf("dynastorev2: failed to decode last evaluated key: %w", err)
 	}
 
 	m := make(map[string]string)
 
 	err = json.Unmarshal(data, &m)
 	if err != nil {
-		return errors.Wrap(err, "dynastorev2: failed to unmarshal last evaluated key")
+		return fmt.Errorf("dynastorev2: failed to unmarshal last evaluated key: %w", err)
 	}
 
 	queryInput.ExclusiveStartKey, err = attributevalue.MarshalMap(&m)
 	if err != nil {
-		return errors.Wrap(err, "dynastorev2: failed to marshal map into last evaluated key")
+		return fmt.Errorf("dynastorev2: failed to marshal map into last evaluated key: %w", err)
 	}
 	return nil
 }
@@ -533,12 +534,12 @@ func encodeLastEvaluatedKey(res *dynamodb.QueryOutput) (string, error) {
 	m := make(map[string]string)
 	err := attributevalue.UnmarshalMap(res.LastEvaluatedKey, &m)
 	if err != nil {
-		return "", errors.Wrap(err, "dynastorev2: failed to unmarshal last evaluated key to map")
+		return "", fmt.Errorf("dynastorev2: failed to unmarshal last evaluated key to map: %w", err)
 	}
 
 	data, err := json.Marshal(&m)
 	if err != nil {
-		return "", errors.Wrap(err, "dynastorev2: failed to marshal last evaluated key")
+		return "", fmt.Errorf("dynastorev2: failed to marshal last evaluated key: %w", err)
 	}
 
 	return base64.RawURLEncoding.EncodeToString(data), nil
@@ -554,19 +555,19 @@ func (t *Store[P, S, V]) isReservedField(k string) bool {
 	}, k)
 }
 
-func (t *Store[P, S, V]) defaultWriteOptions() *writeOptions[P, S, V] {
-	return &writeOptions[P, S, V]{
+func (t *Store[P, S, V]) defaultWriteOptions() *WriteOptions[P, S, V] {
+	return &WriteOptions[P, S, V]{
 		extraFields: make(map[string]any),
 		ttl:         0,
 	}
 }
 
-func (t *Store[P, S, V]) defaultDeleteOptions() *deleteOptions[P, S] {
-	return &deleteOptions[P, S]{
+func (t *Store[P, S, V]) defaultDeleteOptions() *DeleteOptions[P, S] {
+	return &DeleteOptions[P, S]{
 		existsCheck: true,
 	}
 }
 
-func (t *Store[P, S, V]) defaultReadOptions() *readOptions[P, S] {
-	return &readOptions[P, S]{}
+func (t *Store[P, S, V]) defaultReadOptions() *ReadOptions[P, S] {
+	return &ReadOptions[P, S]{}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/wolfeidau/dynastorev2"
 )
 
-func ExampleCreate() {
+func ExampleNew() {
 	ctx := context.Background()
 
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -18,7 +18,7 @@ func ExampleCreate() {
 		// handle error
 	}
 
-	client = dynamodb.NewFromConfig(cfg)
+	client := dynamodb.NewFromConfig(cfg)
 	customerStore := dynastorev2.New[string, string, []byte](client, "tickets-table")
 
 	fields := map[string]any{
