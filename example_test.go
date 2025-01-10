@@ -18,7 +18,7 @@ func ExampleCreate() {
 		// handle error
 	}
 
-	client = dynamodb.NewFromConfig(cfg)
+	client := dynamodb.NewFromConfig(cfg)
 	customerStore := dynastorev2.New[string, string, []byte](client, "tickets-table")
 
 	fields := map[string]any{

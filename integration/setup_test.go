@@ -1,9 +1,10 @@
-package dynastorev2_test
+package integration
 
 import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -15,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/ory/dockertest/v3"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -131,7 +131,7 @@ func ensureTable(ctx context.Context, tableName string) error {
 			return nil
 		}
 
-		return errors.Wrap(err, "failed to create table")
+		return fmt.Errorf("failed to create table: %w", err)
 	}
 
 	err = dynamodb.NewTableExistsWaiter(client).Wait(ctx, &dynamodb.DescribeTableInput{

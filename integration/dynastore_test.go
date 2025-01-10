@@ -1,4 +1,4 @@
-package dynastorev2_test
+package integration
 
 import (
 	"context"
