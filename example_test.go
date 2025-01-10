@@ -10,7 +10,7 @@ import (
 	"github.com/wolfeidau/dynastorev2"
 )
 
-func ExampleCreate() {
+func ExampleNew() {
 	ctx := context.Background()
 
 	cfg, err := config.LoadDefaultConfig(ctx)

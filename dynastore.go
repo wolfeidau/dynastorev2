@@ -58,8 +58,8 @@ type Store[P Key, S Key, V any] struct {
 	client       *dynamodb.Client
 	tableName    string
 	fields       fieldsDef
-	storeOptions *storeOptions[P, S, V]
-	// writeOptions  *writeOptions[P, S, V]
+	storeOptions *StoreOptions[P, S, V]
+	// WriteOptions  *WriteOptions[P, S, V]
 	// deleteOptions *deleteOptions[P, S]
 }
 
@@ -75,7 +75,7 @@ func New[P Key, S Key, V any](client *dynamodb.Client, tableName string, options
 			versionName:      DefaultVersionAttribute,
 			payloadName:      DefaultPayloadAttribute,
 		},
-		storeOptions: &storeOptions[P, S, V]{
+		storeOptions: &StoreOptions[P, S, V]{
 			storeHooks: &StoreHooks[P, S, V]{
 				RequestBuilt: func(ctx context.Context, pk P, sk S, params any) context.Context {
 					return ctx
@@ -87,7 +87,7 @@ func New[P Key, S Key, V any](client *dynamodb.Client, tableName string, options
 		},
 	}
 
-	applyStoreOptions(s.storeOptions, options...)
+	ApplyStoreOptions(s.storeOptions, options...)
 
 	return s
 }
@@ -109,7 +109,7 @@ func (t *Store[P, S, V]) Create(ctx context.Context, partitionKey P, sortKey S, 
 	ctx = setOperationDetails(ctx, "Create", partitionKey, sortKey)
 
 	defaultOpts := t.defaultWriteOptions()
-	applyWriteOptions(defaultOpts, options...)
+	ApplyWriteOptions(defaultOpts, options...)
 
 	update, err := t.buildUpdate(value, defaultOpts)
 	if err != nil {
@@ -159,7 +159,7 @@ func (t *Store[P, S, V]) Get(ctx context.Context, partitionKey P, sortKey S, opt
 	ctx = setOperationDetails(ctx, "Get", partitionKey, sortKey)
 
 	defaultOpts := t.defaultReadOptions()
-	applyReadOptions(defaultOpts, options...)
+	ApplyReadOptions(defaultOpts, options...)
 
 	key, err := t.buildKey(partitionKey, sortKey)
 	if err != nil {
@@ -223,7 +223,7 @@ func (t *Store[P, S, V]) ListBySortKeyPrefix(ctx context.Context, partitionKey P
 	ctx = setOperationDetails(ctx, "ListBySortKeyPrefix", partitionKey, prefix)
 
 	defaultOpts := t.defaultReadOptions()
-	applyReadOptions(defaultOpts, options...)
+	ApplyReadOptions(defaultOpts, options...)
 
 	pk, err := attributevalue.Marshal(partitionKey)
 	if err != nil {
@@ -290,7 +290,7 @@ func (t *Store[P, S, V]) Update(ctx context.Context, partitionKey P, sortKey S, 
 	ctx = setOperationDetails(ctx, "Update", partitionKey, sortKey)
 
 	defaultOpts := t.defaultWriteOptions()
-	applyWriteOptions(defaultOpts, options...)
+	ApplyWriteOptions(defaultOpts, options...)
 
 	update, err := t.buildUpdate(value, defaultOpts)
 	if err != nil {
@@ -333,7 +333,7 @@ func (t *Store[P, S, V]) Delete(ctx context.Context, partitionKey P, sortKey S, 
 	ctx = setOperationDetails(ctx, "Delete", partitionKey, sortKey)
 
 	defaultOpts := t.defaultDeleteOptions()
-	applyDeleteOptions(defaultOpts, options...)
+	ApplyDeleteOptions(defaultOpts, options...)
 
 	builder := dexp.NewBuilder()
 
@@ -467,7 +467,7 @@ func (t *Store[P, S, V]) buildKey(partitionKey P, sortKey S) (map[string]types.A
 	}, nil
 }
 
-func (t *Store[P, S, V]) buildUpdate(value V, options *writeOptions[P, S, V]) (dexp.UpdateBuilder, error) {
+func (t *Store[P, S, V]) buildUpdate(value V, options *WriteOptions[P, S, V]) (dexp.UpdateBuilder, error) {
 	// increment the version attribute by one
 	update := dexp.Add(dexp.Name(t.fields.versionName), dexp.Value(1))
 
@@ -555,19 +555,19 @@ func (t *Store[P, S, V]) isReservedField(k string) bool {
 	}, k)
 }
 
-func (t *Store[P, S, V]) defaultWriteOptions() *writeOptions[P, S, V] {
-	return &writeOptions[P, S, V]{
+func (t *Store[P, S, V]) defaultWriteOptions() *WriteOptions[P, S, V] {
+	return &WriteOptions[P, S, V]{
 		extraFields: make(map[string]any),
 		ttl:         0,
 	}
 }
 
-func (t *Store[P, S, V]) defaultDeleteOptions() *deleteOptions[P, S] {
-	return &deleteOptions[P, S]{
+func (t *Store[P, S, V]) defaultDeleteOptions() *DeleteOptions[P, S] {
+	return &DeleteOptions[P, S]{
 		existsCheck: true,
 	}
 }
 
-func (t *Store[P, S, V]) defaultReadOptions() *readOptions[P, S] {
-	return &readOptions[P, S]{}
+func (t *Store[P, S, V]) defaultReadOptions() *ReadOptions[P, S] {
+	return &ReadOptions[P, S]{}
 }
