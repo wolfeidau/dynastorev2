@@ -101,6 +101,9 @@ type ReadOptions[P Key, S Key] struct {
 	consistentRead   bool
 	lastEvaluatedKey string
 	limit            int32
+	indexName        string
+	indexPartKey     string // the name of the partition key in the index
+	indexSortKey     string // the name of the sort key in the index
 }
 
 // ReadOptionFunc wraps a function and implements the ReadOption interface
@@ -136,6 +139,15 @@ func readWithLastEvaluatedKey[P Key, S Key](lastEvaluatedKey string) ReadOption[
 func readWithLimit[P Key, S Key](limit int32) ReadOption[P, S] {
 	return ReadOptionFunc[P, S](func(opts *ReadOptions[P, S]) {
 		opts.limit = limit
+	})
+}
+
+// readWithIndex provide an index name, partition and sort key when performing list operations
+func readWithIndex[P Key, S Key](name, partKey, sortKey string) ReadOption[P, S] {
+	return ReadOptionFunc[P, S](func(opts *ReadOptions[P, S]) {
+		opts.indexName = name
+		opts.indexPartKey = partKey
+		opts.indexSortKey = sortKey
 	})
 }
 
