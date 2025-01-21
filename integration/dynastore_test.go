@@ -136,6 +136,45 @@ func TestListBySortKeyPrefix(t *testing.T) {
 	assert.Contains(vals, addr2)
 }
 
+func TestListBySortKeyPrefixLocalIndex(t *testing.T) {
+	assert := require.New(t)
+	store := newStore[string, string, []byte](t)
+	part := mustRandKey(partKeyLen)
+
+	op, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
+		map[string]any{
+			"created": "20250101",
+		},
+	))
+	assert.NoError(err)
+	assert.Equal(int64(1), op.Version)
+
+	_, results, err := store.ListBySortKeyPrefix(context.Background(), part, "2025", store.ReadWithLimit(1), store.ReadWithIndex("idx_created", "id", "created"))
+	assert.NoError(err)
+	assert.Len(results, 1)
+}
+
+func TestListBySortKeyPrefixGlobalIndex(t *testing.T) {
+	assert := require.New(t)
+	store := newStore[string, string, []byte](t)
+	part := mustRandKey(partKeyLen)
+
+	pk1 := fmt.Sprintf("%s#%s", part, "new") // partition the data in this global index by the partition key
+
+	op, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
+		map[string]any{
+			"pk1": pk1,
+			"sk1": "20250101",
+		},
+	))
+	assert.NoError(err)
+	assert.Equal(int64(1), op.Version)
+
+	_, results, err := store.ListBySortKeyPrefix(context.Background(), pk1, "2025", store.ReadWithLimit(1), store.ReadWithIndex("idx_global_1", "pk1", "sk1"))
+	assert.NoError(err)
+	assert.Len(results, 1)
+}
+
 func TestUpdate(t *testing.T) {
 	assert := require.New(t)
 
@@ -162,7 +201,7 @@ func TestUpdateWithExtraFields(t *testing.T) {
 
 	_, err = store.Update(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
 		map[string]any{
-			"created": time.Now(),
+			"created": "20250101",
 		},
 	))
 	assert.NoError(err)

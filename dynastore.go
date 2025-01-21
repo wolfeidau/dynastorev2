@@ -230,7 +230,15 @@ func (t *Store[P, S, V]) ListBySortKeyPrefix(ctx context.Context, partitionKey P
 		return nil, vals, fmt.Errorf("dynastorev2: failed to build partition key: %w", err)
 	}
 
-	keyCond := dexp.KeyEqual(dexp.Key(t.fields.partitionKeyName), dexp.Value(pk)).And(dexp.KeyBeginsWith(dexp.Key(t.fields.sortKeyName), prefix))
+	partitionKeyName := t.fields.partitionKeyName
+	sortKeyName := t.fields.sortKeyName
+
+	if defaultOpts.indexName != "" {
+		partitionKeyName = defaultOpts.indexPartKey
+		sortKeyName = defaultOpts.indexSortKey
+	}
+
+	keyCond := dexp.KeyEqual(dexp.Key(partitionKeyName), dexp.Value(pk)).And(dexp.KeyBeginsWith(dexp.Key(sortKeyName), prefix))
 
 	expr, err := dexp.NewBuilder().WithKeyCondition(keyCond).Build()
 	if err != nil {
@@ -243,6 +251,10 @@ func (t *Store[P, S, V]) ListBySortKeyPrefix(ctx context.Context, partitionKey P
 		KeyConditionExpression:    expr.KeyCondition(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+	}
+
+	if defaultOpts.indexName != "" {
+		queryInput.IndexName = aws.String(defaultOpts.indexName)
 	}
 
 	if defaultOpts.lastEvaluatedKey != "" {
@@ -413,6 +425,11 @@ func (t *Store[P, S, V]) ReadWithLastEvaluatedKey(lastEvaluatedKey string) ReadO
 // ReadWithLimit provide a record count limit when performing list operations
 func (t *Store[P, S, V]) ReadWithLimit(limit int32) ReadOption[P, S] {
 	return readWithLimit[P, S](limit)
+}
+
+// ReadWithIndex provide an index name when performing list operations
+func (t *Store[P, S, V]) ReadWithIndex(name, partKey, sortKey string) ReadOption[P, S] {
+	return readWithIndex[P, S](name, partKey, sortKey)
 }
 
 // DeleteWithCheck delete with a check condition to ensure the record exists
