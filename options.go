@@ -98,12 +98,13 @@ type ReadOption[P Key, S Key] interface {
 
 // ReadOptions holds all available read configuration options
 type ReadOptions[P Key, S Key] struct {
-	consistentRead   bool
-	lastEvaluatedKey string
-	limit            int32
-	indexName        string
-	indexPartKey     string // the name of the partition key in the index
-	indexSortKey     string // the name of the sort key in the index
+	consistentRead     bool
+	reverseSortResults bool
+	lastEvaluatedKey   string
+	limit              int32
+	indexName          string
+	indexPartKey       string // the name of the partition key in the index
+	indexSortKey       string // the name of the sort key in the index
 }
 
 // ReadOptionFunc wraps a function and implements the ReadOption interface
@@ -125,6 +126,13 @@ func ApplyReadOptions[P Key, S Key](v *ReadOptions[P, S], opts ...ReadOption[P, 
 func readWithConsistentRead[P Key, S Key](consistentRead bool) ReadOption[P, S] {
 	return ReadOptionFunc[P, S](func(opts *ReadOptions[P, S]) {
 		opts.consistentRead = consistentRead
+	})
+}
+
+// readWithReverseSortResults enable the reverse sort results flag when performing list operations
+func readWithReverseSortResults[P Key, S Key](reverseSortResults bool) ReadOption[P, S] {
+	return ReadOptionFunc[P, S](func(opts *ReadOptions[P, S]) {
+		opts.reverseSortResults = reverseSortResults
 	})
 }
 

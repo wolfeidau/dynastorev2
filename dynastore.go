@@ -251,6 +251,7 @@ func (t *Store[P, S, V]) ListBySortKeyPrefix(ctx context.Context, partitionKey P
 		KeyConditionExpression:    expr.KeyCondition(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
+		ScanIndexForward:          aws.Bool(!defaultOpts.reverseSortResults), // the API is backwards IMO
 	}
 
 	if defaultOpts.indexName != "" {
@@ -415,6 +416,11 @@ func (t *Store[P, S, V]) WriteWithCreateConstraintDisabled(createConstraintDisab
 // ReadWithConsistentRead enable the consistent read flag when performing get operations
 func (t *Store[P, S, V]) ReadWithConsistentRead(consistentRead bool) ReadOption[P, S] {
 	return readWithConsistentRead[P, S](consistentRead)
+}
+
+// ReadWithReverseSortResults
+func (t *Store[P, S, V]) ReadWithReverseSortResults(reverseSortResults bool) ReadOption[P, S] {
+	return readWithReverseSortResults[P, S](reverseSortResults)
 }
 
 // ReadWithLastEvaluatedKey provide a last evaluated key when performing list operations

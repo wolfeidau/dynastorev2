@@ -141,9 +141,17 @@ func TestListBySortKeyPrefixLocalIndex(t *testing.T) {
 	store := newStore[string, string, []byte](t)
 	part := mustRandKey(partKeyLen)
 
-	op, err := store.Create(context.Background(), part, "sort1", []byte("data"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
+	op, err := store.Create(context.Background(), part, "sort1", []byte("data1"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
 		map[string]any{
 			"created": "20250101",
+		},
+	))
+	assert.NoError(err)
+	assert.Equal(int64(1), op.Version)
+
+	op, err = store.Create(context.Background(), part, "sort2", []byte("data2"), store.WriteWithTTL(10*time.Second), store.WriteWithExtraFields(
+		map[string]any{
+			"created": "20250102",
 		},
 	))
 	assert.NoError(err)
@@ -152,6 +160,12 @@ func TestListBySortKeyPrefixLocalIndex(t *testing.T) {
 	_, results, err := store.ListBySortKeyPrefix(context.Background(), part, "2025", store.ReadWithLimit(1), store.ReadWithIndex("idx_created", "id", "created"))
 	assert.NoError(err)
 	assert.Len(results, 1)
+	assert.Equal([]byte("data1"), results[0])
+
+	_, results, err = store.ListBySortKeyPrefix(context.Background(), part, "2025", store.ReadWithLimit(1), store.ReadWithReverseSortResults(true), store.ReadWithIndex("idx_created", "id", "created"))
+	assert.NoError(err)
+	assert.Len(results, 1)
+	assert.Equal([]byte("data2"), results[0])
 }
 
 func TestListBySortKeyPrefixGlobalIndex(t *testing.T) {
